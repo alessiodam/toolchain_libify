@@ -1,0 +1,6 @@
+build/
+dist/
+*.exe
+demo/bin/
+demo/obj/
+demo/prog/
