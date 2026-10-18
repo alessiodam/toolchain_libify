@@ -134,4 +134,4 @@ make fmt
 `make` uses a POSIX shell. On Windows run it from Git Bash or MSYS2.
 
 ## License
-Apache License 2.0. See [LICENSE](LICENSE).
+GNU GPLv3. See [LICENSE](LICENSE).
