@@ -52,6 +52,33 @@ func TestStubOrdersBootstrapFirst(t *testing.T) {
 	}
 }
 
+func TestStubKeepsListedBootstrapPositions(t *testing.T) {
+	stub, err := Stub(StubOptions{
+		Name:    "LWIP",
+		App:     "lwIP",
+		Prefix:  "lwip",
+		Init:    "lwip_init",
+		Exports: []string{"lwip_init", "lwip_start_with_crt", "lwip_get_start_errno", "lwip_get_start_errstring", "lwip_is_newer", "lwip_stop"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(stub)
+
+	var exports []string
+	for _, line := range strings.Split(text, "\n") {
+		if name, ok := strings.CutPrefix(line, "\texport "); ok {
+			exports = append(exports, name)
+		}
+	}
+	if strings.Join(exports, " ") != "lwip_init lwip_start_with_crt lwip_get_start_errno lwip_get_start_errstring lwip_is_newer lwip_stop" {
+		t.Fatalf("export order = %v", exports)
+	}
+	if strings.Contains(text, "lwip_is_newer:\n\tjp") || !strings.Contains(text, "__libify_export_count := 2") {
+		t.Fatalf("bootstrap functions must not get trampolines:\n%s", text)
+	}
+}
+
 func TestStubNeedsExportedInit(t *testing.T) {
 	_, err := Stub(StubOptions{Name: "LWIP", App: "lwIP", Prefix: "lwip", Init: "missing", Exports: []string{"lwip_stop"}})
 	if err == nil || !strings.Contains(err.Error(), "missing") {

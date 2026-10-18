@@ -149,9 +149,12 @@ func buildApp(p *pipeline) error {
 		depFiles = append(depFiles, dep.LibFile)
 	}
 
+	prefix := strings.ToLower(p.name)
+	_, appExports := appdylib.Layout(prefix, exports)
+
 	gen := filepath.Join(p.objDir, "libify")
 	table := filepath.Join(gen, "functable.s")
-	if err := writeIfChanged(table, appdylib.Table(p.name, exports)); err != nil {
+	if err := writeIfChanged(table, appdylib.Table(p.name, appExports)); err != nil {
 		return err
 	}
 
@@ -211,7 +214,6 @@ func buildApp(p *pipeline) error {
 		return err
 	}
 
-	prefix := strings.ToLower(p.name)
 	stub, err := appdylib.Stub(appdylib.StubOptions{
 		Name:         p.name,
 		Version:      p.libVersion,

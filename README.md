@@ -125,7 +125,9 @@ place to set up `.data` and `.bss`, since the application's own startup code
 never runs. `dapp_get_start_errno()` and `dapp_get_start_errstring()` explain
 a failure, and `dapp_is_newer()` reports an application newer than the stub.
 These four functions come first in the library, ahead of `exports.txt`, so
-their ordinals never move.
+their ordinals never move. To keep the slots of an existing release, list them
+in `exports.txt` instead and they take the listed position. They get no entry
+in the application's export table.
 
 The import table starts with the three allocator pointers, followed by one
 pointer for every name in `imports`, in order. Each name must be exported by a

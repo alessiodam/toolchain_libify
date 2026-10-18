@@ -57,13 +57,35 @@ type StubOptions struct {
 	Exports      []string
 }
 
-func (o StubOptions) Entries() []string {
+func Bootstrap(prefix string) []string {
 	return []string{
-		o.Prefix + "_start_with_crt",
-		o.Prefix + "_get_start_errno",
-		o.Prefix + "_get_start_errstring",
-		o.Prefix + "_is_newer",
+		prefix + "_start_with_crt",
+		prefix + "_get_start_errno",
+		prefix + "_get_start_errstring",
+		prefix + "_is_newer",
 	}
+}
+
+func Layout(prefix string, exports []string) (order, app []string) {
+	listed := map[string]bool{}
+	for _, name := range exports {
+		listed[name] = true
+	}
+	boot := map[string]bool{}
+	for _, name := range Bootstrap(prefix) {
+		boot[name] = true
+		if !listed[name] {
+			order = append(order, name)
+		}
+	}
+	order = append(order, exports...)
+
+	for _, name := range exports {
+		if !boot[name] {
+			app = append(app, name)
+		}
+	}
+	return order, app
 }
 
 func Stub(opt StubOptions) ([]byte, error) {
@@ -71,8 +93,10 @@ func Stub(opt StubOptions) ([]byte, error) {
 		return nil, fmt.Errorf("application name %q cannot be quoted", opt.App)
 	}
 
+	order, app := Layout(opt.Prefix, opt.Exports)
+
 	found := false
-	for _, export := range opt.Exports {
+	for _, export := range app {
 		if export == opt.Init {
 			found = true
 		}
@@ -90,7 +114,7 @@ func Stub(opt StubOptions) ([]byte, error) {
 	}
 	out.WriteString("\n\tassume\tadl = 1\n\n")
 
-	for _, name := range append(opt.Entries(), opt.Exports...) {
+	for _, name := range order {
 		fmt.Fprintf(&out, "\texport %s\n", name)
 	}
 
@@ -99,14 +123,14 @@ func Stub(opt StubOptions) ([]byte, error) {
 		fmt.Fprintf(&out, "\tdl %s\n", name)
 	}
 	out.WriteString("_fn_imports_table_end:\n\n__libify_jp_table:\n")
-	for _, name := range opt.Exports {
+	for _, name := range app {
 		fmt.Fprintf(&out, "%s:\n\tjp __libify_unset\n", name)
 	}
 	out.WriteByte('\n')
 
 	err := bootstrap.Execute(&out, map[string]any{
 		"Offset":  fmt.Sprintf("$%02X", TableOffset),
-		"Exports": opt.Exports,
+		"Exports": app,
 		"App":     opt.App,
 		"Prefix":  opt.Prefix,
 		"Init":    opt.Init,
