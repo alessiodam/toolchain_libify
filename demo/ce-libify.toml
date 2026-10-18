@@ -1,0 +1,6 @@
+name = "DEMO"
+src = "src"
+headers = "."
+exports = "exports.txt"
+header = ["demo.h"]
+prefix = ["demo_"]

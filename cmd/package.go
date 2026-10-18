@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -16,31 +17,58 @@ var (
 )
 
 func addToArchive(archive *zip.Writer, source string) error {
-	in, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
+	base := filepath.Dir(source)
+	return filepath.WalkDir(source, func(file string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
 
-	info, err := in.Stat()
-	if err != nil {
-		return err
-	}
+		in, err := os.Open(file)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
 
-	header, err := zip.FileInfoHeader(info)
-	if err != nil {
-		return err
-	}
-	header.Name = filepath.Base(source)
-	header.Method = zip.Deflate
+		info, err := in.Stat()
+		if err != nil {
+			return err
+		}
 
-	out, err := archive.CreateHeader(header)
-	if err != nil {
-		return err
-	}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		name, err := filepath.Rel(base, file)
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(name)
+		header.Method = zip.Deflate
 
-	_, err = io.Copy(out, in)
-	return err
+		out, err := archive.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+
+		_, err = io.Copy(out, in)
+		return err
+	})
+}
+
+func releaseFiles() ([]string, error) {
+	files := []string{filepath.Join(flagBinDir, flagName+".8xv")}
+	if app != nil {
+		parts, err := filepath.Glob(filepath.Join(flagBinDir, flagName+".*.8xv"))
+		if err != nil {
+			return nil, err
+		}
+		if len(parts) == 0 {
+			return nil, fmt.Errorf("no %s.*.8xv application parts in %s, build first", flagName, flagBinDir)
+		}
+		files = append(files, parts...)
+		files = append(files, filepath.Join(flagBinDir, installerProgram))
+	}
+	return append(files, filepath.Join(flagBinDir, flagName+".lib")), nil
 }
 
 var packageCmd = &cobra.Command{
@@ -54,9 +82,9 @@ var packageCmd = &cobra.Command{
 			return err
 		}
 
-		files := []string{
-			filepath.Join(flagBinDir, flagName+".8xv"),
-			filepath.Join(flagBinDir, flagName+".lib"),
+		files, err := releaseFiles()
+		if err != nil {
+			return err
 		}
 		files = append(files, flagHeaders...)
 
@@ -97,7 +125,7 @@ var packageCmd = &cobra.Command{
 		}
 
 		for _, file := range files {
-			if err := copyFile(file, filepath.Join(flagOutDir, filepath.Base(file))); err != nil {
+			if err := copyTree(file, filepath.Join(flagOutDir, filepath.Base(file))); err != nil {
 				return err
 			}
 		}

@@ -83,8 +83,8 @@ jobs:
         working-directory: demo
         run: |
           set -euo pipefail
-          ce-libify exports --exports exports.txt --header demo.h --prefix demo_
-          ce-libify build --name DEMO --src src --headers . --exports exports.txt
+          ce-libify exports
+          ce-libify build
           test -s bin/DEMO.8xv
           test -s bin/DEMO.lib
           grep -q "export	demo_add" bin/DEMO.lib
@@ -119,6 +119,44 @@ jobs:
           make -C prog
           test -s prog/bin/MYPROG.8xp
           grep -q "__libload_library_DEMO" prog/obj/crt.h
+
+      - name: Build the demo application library
+        working-directory: demoapp
+        run: |
+          set -euo pipefail
+          ce-libify build
+          test -s bin/DAPP.8xv
+          test -s bin/DAPP.0.8xv
+          test -s bin/INSTALL.8xp
+          grep -q "export	dapp_start_with_crt" bin/DAPP.lib
+          grep -q "export	dapp_counter" bin/DAPP.lib
+
+      - name: Link a program against the demo application library
+        working-directory: demoapp
+        run: |
+          set -euo pipefail
+          mkdir -p prog/src
+          cat > prog/makefile <<'MAKEFILE'
+          NAME = APPPROG
+          CFLAGS = -Wall -Wextra -Oz -I..
+          EXTRA_LIBLOAD_LIBS = ../bin/DAPP.lib
+
+          include $(shell cedev-config --makefile)
+          MAKEFILE
+          cat > prog/src/main.c <<'SOURCE'
+          #include <stdlib.h>
+          #include "demoapp.h"
+
+          int main(void)
+          {
+              if (!dapp_start_with_crt(malloc, free, realloc))
+                  return 1;
+              return (int)dapp_counter();
+          }
+          SOURCE
+          make -C prog
+          test -s prog/bin/APPPROG.8xp
+          grep -q "__libload_library_DAPP" prog/obj/crt.h
 
   release:
     runs-on: ubuntu-latest

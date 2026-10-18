@@ -73,6 +73,10 @@ func (e *Env) IncludeDir() string {
 	return filepath.Join(e.Prefix, "include")
 }
 
+func (e *Env) Convbin() string {
+	return filepath.Join(e.Prefix, "bin", exeName("convbin"))
+}
+
 func (e *Env) VendorDir() string {
 	return filepath.Join(e.Prefix, "meta", "libify")
 }
@@ -85,6 +89,9 @@ func (e *Env) Run(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(),
+		"CEDEV="+e.Prefix,
+		"PATH="+filepath.Join(e.Prefix, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s: %w", filepath.Base(name), err)
 	}

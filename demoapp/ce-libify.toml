@@ -1,0 +1,7 @@
+name = "DAPP"
+exports = "exports.txt"
+header = ["demoapp.h"]
+
+[app]
+name = "DemoApp"
+init = "dapp_init"

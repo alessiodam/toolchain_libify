@@ -36,7 +36,9 @@ Build it:
 ce-libify build --name DEMO --src src --headers . --exports exports.txt
 ```
 
-You get `bin/DEMO.8xv` and `bin/DEMO.lib`.
+You get `bin/DEMO.8xv` and `bin/DEMO.lib`. The demo also carries a
+[`ce-libify.toml`](demo/ce-libify.toml), so running `ce-libify build` inside
+`demo/` does the same with no flags.
 
 Use it from a normal CE program by copying `DEMO.lib` into
 `$CEDEV/lib/libload/` and `demo.h` into `$CEDEV/include/` (or another method if you prefer).
@@ -58,6 +60,96 @@ ce-libify exports --exports exports.txt --header demo.h
 reports any drift between the list and what your headers declare. Add
 `--prefix demo_` to consider only declarations with a given prefix, which is
 useful when a header also declares things you do not export.
+
+## ce-libify.toml
+Every command reads `ce-libify.toml` from the current directory when it exists.
+Its keys are the command line flags, so a project stops repeating them:
+```toml
+name = "DEMO"
+src = "src"
+headers = "."
+exports = "exports.txt"
+header = ["demo.h"]
+depend = ["usbdrvce"]
+include = ["src/include"]
+define = ["DEMO_DEBUG=1"]
+exclude = ["contrib", "*/main.c"]
+```
+
+A flag given on the command line wins over the manifest. Keys are spelled
+like the flags, `lib-version` included. Apart from the `[app]` and `[[step]]`
+tables below, a key that matches no flag is an error, so a typo does not go
+unnoticed. Sources are collected from
+every directory under `src`; `exclude` takes globs relative to it, and a
+matching directory is skipped as a whole.
+
+### Steps
+`[[step]]` entries run in order after a successful `build`, from the project
+directory, with `CEDEV` set and `$CEDEV/bin` first on `PATH`. Use them for
+project specific work such as generating release headers:
+```toml
+[[step]]
+run = ["python3", "tools/make_headers.py"]
+```
+
+## Application libraries
+A LibLoad appvar holds at most about 64 KB. A bigger library, lwIP-CE for
+example, lives in a flash application instead, and a small LibLoad library
+forwards calls into it. An `[app]` table switches `build` to that layout:
+```toml
+name = "DAPP"
+exports = "exports.txt"
+header = ["demoapp.h"]
+
+[app]
+name = "DemoApp"
+init = "dapp_init"
+```
+
+`build` then produces:
+- `bin/DAPP.0.8xv`, `bin/DAPP.1.8xv` and so on, the application split into
+  appvars
+- `bin/INSTALL.8xp`, the [app_tools](https://github.com/CE-Programming/app_tools)
+  installer that writes those appvars to flash
+- `bin/DAPP.8xv` and `bin/DAPP.lib`, the LibLoad library and its stub
+
+The application is compiled with the toolchain's own `makefile.mk`, so every
+source under `src`, C and `.s` assembly alike, is built the way a CE program
+would be. `exports.txt` becomes an export table placed at offset `0x40` of the
+application. The LibLoad library holds one `jp` per export. A program calls
+`dapp_start_with_crt(malloc, free, realloc)` once, which finds the
+application, checks the table, points every `jp` at the real function and
+calls the `init` function with the import table. `init` has to be exported and
+has the signature `bool init(const void *imports, size_t length)`. It is the
+place to set up `.data` and `.bss`, since the application's own startup code
+never runs. `dapp_get_start_errno()` and `dapp_get_start_errstring()` explain
+a failure, and `dapp_is_newer()` reports an application newer than the stub.
+These four functions come first in the library, ahead of `exports.txt`, so
+their ordinals never move.
+
+The import table starts with the three allocator pointers, followed by one
+pointer for every name in `imports`, in order. Each name must be exported by a
+library in `depend`, which is how the application reaches usbdrvce, fileioc
+and others.
+
+Keys of `[app]`:
+| key | default | meaning |
+| --- | --- | --- |
+| `name` | required | application name, as the installer and `FindAppStart` see it |
+| `init` | required | exported function the library calls once the table is patched |
+| `imports` | none | library functions placed in the import table |
+| `linker_script` | generated | linker script to use instead of the generated one, which must place `.fn_exports` at offset `0x40` |
+| `split` | 65200 | appvar size the application is split into |
+| `installer` | app_tools on GitHub | git URL of app_tools |
+| `installer_ref` | a pinned commit | commit to build the installer from |
+| `installer_patches` | none | patches applied to app_tools once, after cloning |
+
+`[app.make]` passes variables to `makefile.mk` verbatim, which is where
+`CFLAGS`, `ICON`, `BSSHEAP_HIGH`, `LTO` and the like go. `include`, `define`
+and `optimize` only apply to plain LibLoad libraries. A full example lives in
+[`demoapp/`](demoapp).
+
+`emit` and `deps` are not available for application libraries.
 
 ## Depending on another library
 A LibLoad library can use another one. Pass `--depend` and the dependency is

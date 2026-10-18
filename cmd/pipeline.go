@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -25,6 +27,9 @@ type pipeline struct {
 	exportFile string
 	dependency []string
 	optimize   string
+	include    []string
+	define     []string
+	exclude    []string
 }
 
 func (p *pipeline) dependencies() ([]*libasm.Dependency, error) {
@@ -46,23 +51,45 @@ func (p *pipeline) dependencies() ([]*libasm.Dependency, error) {
 	return deps, nil
 }
 
-func (p *pipeline) sources() ([]string, error) {
-	entries, err := os.ReadDir(p.srcDir)
+func (p *pipeline) excluded(rel string) (bool, error) {
+	for _, pattern := range p.exclude {
+		match, err := path.Match(pattern, rel)
+		if err != nil {
+			return false, err
+		}
+		if match {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (p *pipeline) sources(ext string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(p.srcDir, func(file string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(p.srcDir, file)
+		if err != nil {
+			return err
+		}
+		skip, err := p.excluded(filepath.ToSlash(rel))
+		if err != nil {
+			return err
+		}
+		switch {
+		case skip && entry.IsDir():
+			return filepath.SkipDir
+		case !skip && !entry.IsDir() && filepath.Ext(file) == ext:
+			files = append(files, file)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	var files []string
-	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".c" {
-			files = append(files, filepath.Join(p.srcDir, entry.Name()))
-		}
-	}
 	sort.Strings(files)
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no C sources under %s", p.srcDir)
-	}
 	return files, nil
 }
 
@@ -71,20 +98,38 @@ func (p *pipeline) compile() (string, error) {
 		return "", err
 	}
 
-	sources, err := p.sources()
+	sources, err := p.sources(".c")
 	if err != nil {
 		return "", err
+	}
+	if len(sources) == 0 {
+		return "", fmt.Errorf("no C sources under %s", p.srcDir)
 	}
 
 	var bitcode []string
 	for _, source := range sources {
-		out := filepath.Join(p.objDir, filepath.Base(source)+".bc")
+		rel, err := filepath.Rel(p.srcDir, source)
+		if err != nil {
+			return "", err
+		}
+		out := filepath.Join(p.objDir, "src", rel+".bc")
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return "", err
+		}
 		args := []string{
 			"-c", "-emit-llvm",
 			"-nostdinc",
 			"-isystem", p.env.IncludeDir(),
 			"-I", p.headerDir,
 			"-I", p.srcDir,
+		}
+		for _, dir := range p.include {
+			args = append(args, "-I", dir)
+		}
+		for _, define := range p.define {
+			args = append(args, "-D"+define)
+		}
+		args = append(args,
 			p.optimize,
 			"-Wall", "-Wextra",
 			"-D__TICE__=1",
@@ -94,8 +139,8 @@ func (p *pipeline) compile() (string, error) {
 			"-fdata-sections",
 			source,
 			"-o", out,
-		}
-		fmt.Fprintln(os.Stderr, "[cc]", filepath.Base(source))
+		)
+		fmt.Fprintln(os.Stderr, "[cc]", filepath.ToSlash(rel))
 		if err := p.env.Run(p.env.Clang, args...); err != nil {
 			return "", err
 		}

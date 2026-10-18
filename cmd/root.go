@@ -35,6 +35,9 @@ func requireName() error {
 }
 
 func init() {
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		return applyManifest(cmd.Flags(), manifestFile)
+	}
 	rootCmd.PersistentFlags().StringVar(&flagCEdev, "cedev", "", "CE toolchain prefix (default: cedev-config --prefix)")
 	rootCmd.PersistentFlags().StringVar(&flagFasmg, "fasmg", "", "path to the fasmg binary")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "echo every command that is run")

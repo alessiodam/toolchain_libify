@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/alessiodam/toolchain_libify/internal/ceenv"
 	"github.com/spf13/cobra"
@@ -20,6 +21,9 @@ var (
 	flagExports  string
 	flagDepends  []string
 	flagOptimize string
+	flagInclude  []string
+	flagDefine   []string
+	flagExclude  []string
 )
 
 func newPipeline() (*pipeline, error) {
@@ -49,6 +53,9 @@ func newPipeline() (*pipeline, error) {
 		exportFile: flagExports,
 		dependency: flagDepends,
 		optimize:   flagOptimize,
+		include:    flagInclude,
+		define:     flagDefine,
+		exclude:    flagExclude,
 	}, nil
 }
 
@@ -85,6 +92,13 @@ var buildCmd = &cobra.Command{
 			return err
 		}
 
+		if app != nil {
+			if err := buildApp(p); err != nil {
+				return err
+			}
+			return runSteps(p)
+		}
+
 		assembly, err := writeImage(p)
 		if err != nil {
 			return err
@@ -111,14 +125,27 @@ var buildCmd = &cobra.Command{
 
 		fmt.Fprintf(os.Stderr, "[success] %s, %d bytes\n", appvar, info.Size())
 		fmt.Fprintf(os.Stderr, "[success] %s\n", stub)
-		return nil
+		return runSteps(p)
 	},
+}
+
+func runSteps(p *pipeline) error {
+	for _, s := range steps {
+		fmt.Fprintln(os.Stderr, "[step]", strings.Join(s.Run, " "))
+		if err := p.env.Run(s.Run[0], s.Run[1:]...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var emitCmd = &cobra.Command{
 	Use:   "emit",
 	Short: "Write the generated assembly without running fasmg",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := rejectApp(cmd); err != nil {
+			return err
+		}
 		p, err := newPipeline()
 		if err != nil {
 			return err
@@ -132,6 +159,9 @@ var depsCmd = &cobra.Command{
 	Use:   "deps",
 	Short: "Report how every external symbol gets resolved",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := rejectApp(cmd); err != nil {
+			return err
+		}
 		p, err := newPipeline()
 		if err != nil {
 			return err
@@ -168,6 +198,9 @@ func addPipelineFlags(commands ...*cobra.Command) {
 		flags.StringVar(&flagExports, "exports", "exports.txt", "ordered export list")
 		flags.StringSliceVar(&flagDepends, "depend", nil, "LibLoad library this one depends on")
 		flags.StringVar(&flagOptimize, "optimize", "-Oz", "optimisation level passed to ez80-clang")
+		flags.StringSliceVar(&flagInclude, "include", nil, "extra include directory passed to ez80-clang")
+		flags.StringSliceVar(&flagDefine, "define", nil, "preprocessor definition passed to ez80-clang")
+		flags.StringSliceVar(&flagExclude, "exclude", nil, "glob of sources or directories under --src to skip")
 	}
 }
 

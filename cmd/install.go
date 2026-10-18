@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -29,6 +30,22 @@ func copyFile(source, target string) error {
 	return out.Close()
 }
 
+func copyTree(source, target string) error {
+	return filepath.WalkDir(source, func(file string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(source, file)
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(filepath.Join(target, rel), 0o755)
+		}
+		return copyFile(file, filepath.Join(target, rel))
+	})
+}
+
 var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Copy the .lib stub and public headers into the CE toolchain",
@@ -51,7 +68,7 @@ var installCmd = &cobra.Command{
 
 		for _, header := range flagHeaders {
 			target := filepath.Join(prefix, "include", filepath.Base(header))
-			if err := copyFile(header, target); err != nil {
+			if err := copyTree(header, target); err != nil {
 				return err
 			}
 			fmt.Fprintln(os.Stderr, "[install]", target)

@@ -4,3 +4,6 @@ dist/
 demo/bin/
 demo/obj/
 demo/prog/
+demoapp/bin/
+demoapp/obj/
+demoapp/prog/
