@@ -10,7 +10,12 @@ import (
 	"text/template"
 )
 
-const TableOffset = 0x40
+const (
+	TableOffset = 0x40
+	// VersionOffset is where a versioned application keeps its version
+	// string, so a program can read it without knowing the layout.
+	VersionOffset = 0x1000
+)
 
 //go:embed bootstrap.asm
 var bootstrapSource string
@@ -25,7 +30,9 @@ func magic(name string) []string {
 	return chars
 }
 
-func Table(name string, exports []string, weak bool) []byte {
+// Table returns the export table. A non-empty version adds _libify_version,
+// a NUL-terminated string the linker script places at VersionOffset.
+func Table(name string, exports []string, weak bool, version string) []byte {
 	var out bytes.Buffer
 
 	directive := ".extern"
@@ -45,6 +52,13 @@ func Table(name string, exports []string, weak bool) []byte {
 	fmt.Fprintf(&out, "\td24 %d\n", len(exports))
 	for _, export := range exports {
 		fmt.Fprintf(&out, "\td24 _%s\n", export)
+	}
+
+	if version != "" {
+		out.WriteString("\n.section .libify_version,\"aR\",@progbits\n")
+		out.WriteString(".globl _libify_version\n\n")
+		out.WriteString("_libify_version:\n")
+		fmt.Fprintf(&out, "\tdb \"%s\",0\n", version)
 	}
 
 	return out.Bytes()
@@ -152,7 +166,23 @@ func Stub(opt StubOptions) ([]byte, error) {
 
 var headerEnd = "KEEP (*(.header.icon))"
 
-func LinkerScript(stock []byte) ([]byte, error) {
+func versionPin(versioned bool) string {
+	if !versioned {
+		return ""
+	}
+	return fmt.Sprintf(`
+    ASSERT(. <= LOAD_ADDR + 0x%04X, "Error: export table exceeds the version offset")
+
+    .libify_version LOAD_ADDR + 0x%04X :
+    {
+        KEEP(*(.libify_version))
+    } >prgm
+
+    ASSERT(_libify_version == LOAD_ADDR + 0x%04X, "Error: version string is not at its fixed offset")
+`, VersionOffset, VersionOffset, VersionOffset)
+}
+
+func LinkerScript(stock []byte, versioned bool) ([]byte, error) {
 	text := string(stock)
 
 	at := strings.Index(text, headerEnd)
@@ -175,12 +205,12 @@ func LinkerScript(stock []byte) ([]byte, error) {
     } >prgm
 
     ASSERT(_fn_exports_table == LOAD_ADDR + 0x%02X, "Error: export table is not at its fixed offset")
-
+%s
     PROVIDE(____bss_low = ___bss_low);
     PROVIDE(____bss_len = ___bss_len);
     PROVIDE(____data_vma = ___data_vma);
     PROVIDE(____data_lma = ___data_lma);
-    PROVIDE(____data_len = ___data_len);`, TableOffset, TableOffset, TableOffset)
+    PROVIDE(____data_len = ___data_len);`, TableOffset, TableOffset, TableOffset, versionPin(versioned))
 
 	return []byte(text[:at] + descriptor + text[at:]), nil
 }

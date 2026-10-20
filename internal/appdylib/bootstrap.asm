@@ -142,9 +142,9 @@ __libify_max_errno := 6
 	pop hl
 	pop hl
 
-	pop ix
 	or a, a
 	jr z, .init_failed
+	pop ix
 	ld a, 1
 	ret
 

@@ -23,6 +23,7 @@ func TestManifestFillsUnsetFlags(t *testing.T) {
 		`optimize = "-O2"`,
 		`[app]`,
 		`name = "ExampleApp"`,
+		`version = "1.2.3"`,
 		`init = "example_init_runtime"`,
 		`imports = ["usb_Init"]`,
 		`[app.make]`,
@@ -45,11 +46,24 @@ func TestManifestFillsUnsetFlags(t *testing.T) {
 	if strings.Join(*depend, ",") != "usbdrvce,fileioc" {
 		t.Fatalf("depend = %v", *depend)
 	}
-	if app == nil || app.Name != "ExampleApp" || app.Make["LTO"] != "NO" || app.Imports[0] != "usb_Init" {
+	if app == nil || app.Name != "ExampleApp" || app.Version != "1.2.3" || app.Make["LTO"] != "NO" || app.Imports[0] != "usb_Init" {
 		t.Fatalf("app = %+v", app)
 	}
 	if len(steps) != 1 || steps[0].Run[1] != "headers.py" {
 		t.Fatalf("steps = %+v", steps)
+	}
+}
+
+func TestParseAppVersion(t *testing.T) {
+	for _, valid := range []string{"", "1.2.3", "0.0.255"} {
+		if _, err := parseAppVersion(valid); err != nil {
+			t.Errorf("parseAppVersion(%q): %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{"1.2", "1.2.256", "v1.2.3", "1.2.3.4"} {
+		if _, err := parseAppVersion(invalid); err == nil {
+			t.Errorf("parseAppVersion(%q) succeeded", invalid)
+		}
 	}
 }
 

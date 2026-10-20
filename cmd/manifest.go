@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/spf13/cobra"
@@ -15,6 +17,7 @@ const manifestFile = "ce-libify.toml"
 
 type appBuild struct {
 	Name         string            `toml:"name"`
+	Version      string            `toml:"version"`
 	Init         string            `toml:"init"`
 	Imports      []string          `toml:"imports"`
 	LinkerScript string            `toml:"linker_script"`
@@ -116,4 +119,22 @@ func rejectApp(cmd *cobra.Command) error {
 		return fmt.Errorf("%s builds an application library, %s is not available", manifestFile, cmd.Name())
 	}
 	return nil
+}
+
+// parseAppVersion checks an [app] version: empty, or MAJOR.MINOR.PATCH with
+// each part from 0 to 255.
+func parseAppVersion(text string) (string, error) {
+	if text == "" {
+		return text, nil
+	}
+	parts := strings.Split(text, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("app version %q must be MAJOR.MINOR.PATCH", text)
+	}
+	for _, part := range parts {
+		if _, err := strconv.ParseUint(part, 10, 8); err != nil {
+			return "", fmt.Errorf("app version %q must contain three integers from 0 to 255", text)
+		}
+	}
+	return text, nil
 }

@@ -6,7 +6,7 @@ import (
 )
 
 func TestTableLayout(t *testing.T) {
-	table := string(Table("example", []string{"example_init", "example_stop"}, false))
+	table := string(Table("example", []string{"example_init", "example_stop"}, false, ""))
 
 	for _, want := range []string{
 		".section .fn_exports,\"aR\",@progbits",
@@ -54,7 +54,7 @@ func TestStubOrdersBootstrapFirst(t *testing.T) {
 }
 
 func TestRetainRemovedExports(t *testing.T) {
-	table := string(Table("example", []string{"example_init", "example_stop"}, true))
+	table := string(Table("example", []string{"example_init", "example_stop"}, true, ""))
 	if !strings.Contains(table, ".weak _example_init\n.weak _example_stop") {
 		t.Fatalf("table lacks weak exports:\n%s", table)
 	}
@@ -112,7 +112,7 @@ func TestStubNeedsExportedInit(t *testing.T) {
 func TestLinkerScriptPinsTable(t *testing.T) {
 	stock := ".header :\n{\n    KEEP (*(.header.icon))\n} >prgm\n\n.init :\n"
 
-	script, err := LinkerScript([]byte(stock))
+	script, err := LinkerScript([]byte(stock), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,58 @@ func TestLinkerScriptPinsTable(t *testing.T) {
 		t.Fatalf("export table not placed right after the header:\n%s", text)
 	}
 
-	if _, err := LinkerScript([]byte(".text : { }")); err == nil {
+	if _, err := LinkerScript([]byte(".text : { }"), false); err == nil {
 		t.Fatal("expected an error for a script without .header")
+	}
+}
+
+func TestTableVersion(t *testing.T) {
+	table := string(Table("example", []string{"example_init"}, false, "2.1.3"))
+	for _, want := range []string{
+		".section .libify_version,\"aR\",@progbits",
+		"_libify_version:\n\tdb \"2.1.3\",0\n",
+	} {
+		if !strings.Contains(table, want) {
+			t.Fatalf("table lacks %q:\n%s", want, table)
+		}
+	}
+	if strings.Contains(string(Table("example", []string{"example_init"}, false, "")), "libify_version") {
+		t.Fatal("an unversioned table must not carry a version section")
+	}
+}
+
+func TestLinkerScriptPinsVersion(t *testing.T) {
+	stock := ".header :\n{\n    KEEP (*(.header.icon))\n} >prgm\n\n.init :\n"
+
+	versioned, err := LinkerScript([]byte(stock), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(versioned), ".libify_version LOAD_ADDR + 0x1000") {
+		t.Fatalf("version string is not pinned:\n%s", versioned)
+	}
+	plain, err := LinkerScript([]byte(stock), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(plain), "libify_version") {
+		t.Fatalf("an unversioned script must not pin a version:\n%s", plain)
+	}
+}
+
+func TestStubRestoresIXOnceOnInitFailure(t *testing.T) {
+	stub, err := Stub(StubOptions{
+		Name:    "EXAMPLE",
+		App:     "ExampleApp",
+		Prefix:  "example",
+		Init:    "example_init",
+		Exports: []string{"example_init"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "call example_init\n\tpop hl\n\tpop hl\n\n\tor a, a\n\tjr z, .init_failed\n\tpop ix\n\tld a, 1"
+	if !strings.Contains(string(stub), want) {
+		t.Fatalf("the init result must be checked before the success path restores ix:\n%s", stub)
 	}
 }

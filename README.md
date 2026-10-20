@@ -129,6 +129,11 @@ their ordinals never move. To keep the slots of an existing release, list them
 in `exports.txt` instead and they take the listed position. They get no entry
 in the application's export table.
 
+With `version = "MAJOR.MINOR.PATCH"` in `[app]`, the application carries that
+string, NUL-terminated, at offset `0x1000`, so a program can read the
+installed version from the application's start without knowing anything else
+about its layout. Each part runs from 0 to 255.
+
 With `retain_removed = true` in `[app]`, a function removed from the headers
 can stay in `exports.txt`. Its ordinal becomes an inactive slot, calls from
 older programs return through `__libify_unset`, and `exports` reports it
@@ -144,8 +149,9 @@ Keys of `[app]`:
 | --- | --- | --- |
 | `name` | required | application name, as the installer and `FindAppStart` see it |
 | `init` | required | exported function the library calls once the table is patched |
+| `version` | none | `MAJOR.MINOR.PATCH` string placed at offset `0x1000` as `_libify_version` |
 | `imports` | none | library functions placed in the import table |
-| `linker_script` | generated | linker script to use instead of the generated one, which must place `.fn_exports` at offset `0x40` |
+| `linker_script` | generated | linker script to use instead of the generated one, which must place `.fn_exports` at offset `0x40` (and `.libify_version` at `0x1000` when `version` is set) |
 | `split` | 65200 | appvar size the application is split into |
 | `installer` | app_tools on GitHub | git URL of app_tools |
 | `installer_ref` | a pinned commit | commit to build the installer from |

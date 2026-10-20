@@ -152,9 +152,14 @@ func buildApp(p *pipeline) error {
 	prefix := strings.ToLower(p.name)
 	_, appExports := appdylib.Layout(prefix, exports)
 
+	version, err := parseAppVersion(app.Version)
+	if err != nil {
+		return err
+	}
+
 	gen := filepath.Join(p.objDir, "libify")
 	table := filepath.Join(gen, "functable.s")
-	if err := writeIfChanged(table, appdylib.Table(p.name, appExports, app.Retain)); err != nil {
+	if err := writeIfChanged(table, appdylib.Table(p.name, appExports, app.Retain, version)); err != nil {
 		return err
 	}
 
@@ -164,7 +169,7 @@ func buildApp(p *pipeline) error {
 		if err != nil {
 			return err
 		}
-		body, err := appdylib.LinkerScript(stock)
+		body, err := appdylib.LinkerScript(stock, version != "")
 		if err != nil {
 			return err
 		}
