@@ -10,6 +10,7 @@ func TestTableLayout(t *testing.T) {
 
 	for _, want := range []string{
 		".section .fn_exports,\"aR\",@progbits",
+		".weak _lwip_init\n.weak _lwip_stop",
 		"\tdb 'L','W','I','P','T','B'\n\td24 2\n\td24 _lwip_init\n\td24 _lwip_stop\n",
 	} {
 		if !strings.Contains(table, want) {
@@ -45,6 +46,7 @@ func TestStubOrdersBootstrapFirst(t *testing.T) {
 		"db \"lwIP\", 0",
 		"cp a, 'B'",
 		"call lwip_init",
+		"sbc hl, de\n\tjr z, .patch_next",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("stub lacks %q", want)

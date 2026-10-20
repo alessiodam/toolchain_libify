@@ -50,14 +50,17 @@ the program starts.
 This file is the library's ABI. LibLoad resolves imports by ordinal, which is
 just the position in this list, so the file is append only. Adding a line at the
 end is safe. Reordering or deleting a line breaks every program already built
-against a released `.8xv`.
+against a released `.8xv`. If an exported function is removed from the public
+headers, leave its name in this file. ce-libify retains that ordinal as an
+inactive slot, and calls from older clients return through `__libify_unset`.
 
 Blank lines and lines starting with `#` are ignored.
 ```
 ce-libify exports --exports exports.txt --header demo.h
 ```
 
-reports any drift between the list and what your headers declare. Add
+reports new declarations missing from the list as errors and removed
+declarations as retained inactive slots. Add
 `--prefix demo_` to consider only declarations with a given prefix, which is
 useful when a header also declares things you do not export.
 

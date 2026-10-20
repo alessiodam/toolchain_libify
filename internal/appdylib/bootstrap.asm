@@ -114,7 +114,12 @@ __libify_max_errno := 6
 	jr z, .patch_done
 	push hl
 	ld hl, (hl)
+	ld de, 0
+	or a, a
+	sbc hl, de
+	jr z, .patch_next
 	ld (ix + 0), hl
+.patch_next:
 	pop hl
 	inc hl
 	inc hl

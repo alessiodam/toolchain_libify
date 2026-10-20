@@ -32,7 +32,11 @@ func Table(name string, exports []string) []byte {
 	out.WriteString(".section .fn_exports,\"aR\",@progbits\n")
 	out.WriteString(".globl _fn_exports_table\n\n")
 	for _, export := range exports {
-		fmt.Fprintf(&out, ".extern _%s\n", export)
+		// Keep removed exports in the ordinal table without requiring their
+		// implementation to remain in the application. Undefined weak symbols
+		// resolve to zero; the client stub leaves those slots on
+		// __libify_unset.
+		fmt.Fprintf(&out, ".weak _%s\n", export)
 	}
 
 	out.WriteString("\n_fn_exports_table:\n")
