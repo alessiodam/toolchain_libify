@@ -173,8 +173,10 @@ func TestStubRestoresIXOnceOnInitFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// bootstrap.asm is checked out with CRLF line endings on Windows.
+	text := strings.ReplaceAll(string(stub), "\r\n", "\n")
 	want := "call example_init\n\tpop hl\n\tpop hl\n\n\tor a, a\n\tjr z, .init_failed\n\tpop ix\n\tld a, 1"
-	if !strings.Contains(string(stub), want) {
+	if !strings.Contains(text, want) {
 		t.Fatalf("the init result must be checked before the success path restores ix:\n%s", stub)
 	}
 }
