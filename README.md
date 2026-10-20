@@ -129,6 +129,11 @@ their ordinals never move. To keep the slots of an existing release, list them
 in `exports.txt` instead and they take the listed position. They get no entry
 in the application's export table.
 
+With `retain_removed = true` in `[app]`, a function removed from the headers
+can stay in `exports.txt`. Its ordinal becomes an inactive slot, calls from
+older programs return through `__libify_unset`, and `exports` reports it
+instead of failing.
+
 The import table starts with the three allocator pointers, followed by one
 pointer for every name in `imports`, in order. Each name must be exported by a
 library in `depend`, which is how the application reaches usbdrvce, fileioc

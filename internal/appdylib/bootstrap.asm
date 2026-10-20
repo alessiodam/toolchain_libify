@@ -114,7 +114,16 @@ __libify_max_errno := 6
 	jr z, .patch_done
 	push hl
 	ld hl, (hl)
+{{- if .Retain}}
+	ld de, 0
+	or a, a
+	sbc hl, de
+	jr z, .patch_next
+{{- end}}
 	ld (ix + 0), hl
+{{- if .Retain}}
+.patch_next:
+{{- end}}
 	pop hl
 	inc hl
 	inc hl
