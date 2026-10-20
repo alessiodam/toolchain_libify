@@ -23,6 +23,7 @@ type appBuild struct {
 	InstallerRef string            `toml:"installer_ref"`
 	Patches      []string          `toml:"installer_patches"`
 	Make         map[string]string `toml:"make"`
+	Retain       bool              `toml:"retain_removed"`
 }
 
 type step struct {

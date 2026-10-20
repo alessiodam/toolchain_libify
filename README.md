@@ -50,17 +50,14 @@ the program starts.
 This file is the library's ABI. LibLoad resolves imports by ordinal, which is
 just the position in this list, so the file is append only. Adding a line at the
 end is safe. Reordering or deleting a line breaks every program already built
-against a released `.8xv`. If an exported function is removed from the public
-headers, leave its name in this file. ce-libify retains that ordinal as an
-inactive slot, and calls from older clients return through `__libify_unset`.
+against a released `.8xv`.
 
 Blank lines and lines starting with `#` are ignored.
 ```
 ce-libify exports --exports exports.txt --header demo.h
 ```
 
-reports new declarations missing from the list as errors and removed
-declarations as retained inactive slots. Add
+reports any drift between the list and what your headers declare. Add
 `--prefix demo_` to consider only declarations with a given prefix, which is
 useful when a header also declares things you do not export.
 
@@ -131,6 +128,11 @@ These four functions come first in the library, ahead of `exports.txt`, so
 their ordinals never move. To keep the slots of an existing release, list them
 in `exports.txt` instead and they take the listed position. They get no entry
 in the application's export table.
+
+With `retain_removed = true` in `[app]`, a function removed from the headers
+can stay in `exports.txt`. Its ordinal becomes an inactive slot, calls from
+older programs return through `__libify_unset`, and `exports` reports it
+instead of failing.
 
 The import table starts with the three allocator pointers, followed by one
 pointer for every name in `imports`, in order. Each name must be exported by a

@@ -154,7 +154,7 @@ func buildApp(p *pipeline) error {
 
 	gen := filepath.Join(p.objDir, "libify")
 	table := filepath.Join(gen, "functable.s")
-	if err := writeIfChanged(table, appdylib.Table(p.name, appExports)); err != nil {
+	if err := writeIfChanged(table, appdylib.Table(p.name, appExports, app.Retain)); err != nil {
 		return err
 	}
 
@@ -224,6 +224,7 @@ func buildApp(p *pipeline) error {
 		Dependencies: depFiles,
 		Imports:      app.Imports,
 		Exports:      exports,
+		Retain:       app.Retain,
 	})
 	if err != nil {
 		return err

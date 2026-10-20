@@ -125,11 +125,16 @@ var exportsCmd = &cobra.Command{
 		for _, name := range unexported {
 			fmt.Printf("  declared but not exported: %s (append it to %s)\n", name, flagExportFile)
 		}
+		retain := app != nil && app.Retain
 		for _, name := range undeclared {
-			fmt.Printf("  exported but not declared:  %s\n", name)
+			if retain {
+				fmt.Printf("  retained inactive slot:     %s\n", name)
+			} else {
+				fmt.Printf("  exported but not declared:  %s\n", name)
+			}
 		}
 
-		if len(unexported) > 0 {
+		if len(unexported) > 0 || (!retain && len(undeclared) > 0) {
 			return fmt.Errorf("exports.txt and the headers disagree")
 		}
 

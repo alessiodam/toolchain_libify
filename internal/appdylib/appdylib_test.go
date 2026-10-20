@@ -6,12 +6,12 @@ import (
 )
 
 func TestTableLayout(t *testing.T) {
-	table := string(Table("lwip", []string{"lwip_init", "lwip_stop"}))
+	table := string(Table("example", []string{"example_init", "example_stop"}, false))
 
 	for _, want := range []string{
 		".section .fn_exports,\"aR\",@progbits",
-		".weak _lwip_init\n.weak _lwip_stop",
-		"\tdb 'L','W','I','P','T','B'\n\td24 2\n\td24 _lwip_init\n\td24 _lwip_stop\n",
+		".extern _example_init\n.extern _example_stop",
+		"\tdb 'E','X','A','M','P','L','E','T','B'\n\td24 2\n\td24 _example_init\n\td24 _example_stop\n",
 	} {
 		if !strings.Contains(table, want) {
 			t.Fatalf("table lacks %q:\n%s", want, table)
@@ -21,32 +21,31 @@ func TestTableLayout(t *testing.T) {
 
 func TestStubOrdersBootstrapFirst(t *testing.T) {
 	stub, err := Stub(StubOptions{
-		Name:    "LWIP",
+		Name:    "EXAMPLE",
 		Version: 1,
-		App:     "lwIP",
-		Prefix:  "lwip",
-		Init:    "lwip_init",
+		App:     "ExampleApp",
+		Prefix:  "example",
+		Init:    "example_init",
 		Imports: []string{"usb_Init"},
-		Exports: []string{"lwip_init", "lwip_stop"},
+		Exports: []string{"example_init", "example_stop"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(stub)
 
-	start := strings.Index(text, "\texport lwip_start_with_crt")
-	first := strings.Index(text, "\texport lwip_init")
+	start := strings.Index(text, "\texport example_start_with_crt")
+	first := strings.Index(text, "\texport example_init")
 	if start < 0 || first < start {
 		t.Fatalf("bootstrap exports must come before the library exports:\n%s", text)
 	}
 	for _, want := range []string{
 		"_fn_imports_table:\n\tdl 0\n\tdl 0\n\tdl 0\n\tdl usb_Init\n",
-		"lwip_stop:\n\tjp __libify_unset\n",
+		"example_stop:\n\tjp __libify_unset\n",
 		"__libify_export_count := 2",
-		"db \"lwIP\", 0",
+		"db \"ExampleApp\", 0",
 		"cp a, 'B'",
-		"call lwip_init",
-		"sbc hl, de\n\tjr z, .patch_next",
+		"call example_init",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("stub lacks %q", want)
@@ -54,13 +53,35 @@ func TestStubOrdersBootstrapFirst(t *testing.T) {
 	}
 }
 
+func TestRetainRemovedExports(t *testing.T) {
+	table := string(Table("example", []string{"example_init", "example_stop"}, true))
+	if !strings.Contains(table, ".weak _example_init\n.weak _example_stop") {
+		t.Fatalf("table lacks weak exports:\n%s", table)
+	}
+
+	opt := StubOptions{Name: "EXAMPLE", App: "ExampleApp", Prefix: "example", Init: "example_init", Exports: []string{"example_init"}}
+	plain, err := Stub(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt.Retain = true
+	retained, err := Stub(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skip := "jr z, .patch_next"
+	if strings.Contains(string(plain), skip) || !strings.Contains(string(retained), skip) {
+		t.Fatalf("zero slots must only be skipped when retaining removed exports")
+	}
+}
+
 func TestStubKeepsListedBootstrapPositions(t *testing.T) {
 	stub, err := Stub(StubOptions{
-		Name:    "LWIP",
-		App:     "lwIP",
-		Prefix:  "lwip",
-		Init:    "lwip_init",
-		Exports: []string{"lwip_init", "lwip_start_with_crt", "lwip_get_start_errno", "lwip_get_start_errstring", "lwip_is_newer", "lwip_stop"},
+		Name:    "EXAMPLE",
+		App:     "ExampleApp",
+		Prefix:  "example",
+		Init:    "example_init",
+		Exports: []string{"example_init", "example_start_with_crt", "example_get_start_errno", "example_get_start_errstring", "example_is_newer", "example_stop"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -73,16 +94,16 @@ func TestStubKeepsListedBootstrapPositions(t *testing.T) {
 			exports = append(exports, name)
 		}
 	}
-	if strings.Join(exports, " ") != "lwip_init lwip_start_with_crt lwip_get_start_errno lwip_get_start_errstring lwip_is_newer lwip_stop" {
+	if strings.Join(exports, " ") != "example_init example_start_with_crt example_get_start_errno example_get_start_errstring example_is_newer example_stop" {
 		t.Fatalf("export order = %v", exports)
 	}
-	if strings.Contains(text, "lwip_is_newer:\n\tjp") || !strings.Contains(text, "__libify_export_count := 2") {
+	if strings.Contains(text, "example_is_newer:\n\tjp") || !strings.Contains(text, "__libify_export_count := 2") {
 		t.Fatalf("bootstrap functions must not get trampolines:\n%s", text)
 	}
 }
 
 func TestStubNeedsExportedInit(t *testing.T) {
-	_, err := Stub(StubOptions{Name: "LWIP", App: "lwIP", Prefix: "lwip", Init: "missing", Exports: []string{"lwip_stop"}})
+	_, err := Stub(StubOptions{Name: "EXAMPLE", App: "ExampleApp", Prefix: "example", Init: "missing", Exports: []string{"example_stop"}})
 	if err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("got %v", err)
 	}

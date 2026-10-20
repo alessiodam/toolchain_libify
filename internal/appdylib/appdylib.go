@@ -25,18 +25,19 @@ func magic(name string) []string {
 	return chars
 }
 
-func Table(name string, exports []string) []byte {
+func Table(name string, exports []string, weak bool) []byte {
 	var out bytes.Buffer
+
+	directive := ".extern"
+	if weak {
+		directive = ".weak"
+	}
 
 	out.WriteString(".assume adl=1\n")
 	out.WriteString(".section .fn_exports,\"aR\",@progbits\n")
 	out.WriteString(".globl _fn_exports_table\n\n")
 	for _, export := range exports {
-		// Keep removed exports in the ordinal table without requiring their
-		// implementation to remain in the application. Undefined weak symbols
-		// resolve to zero; the client stub leaves those slots on
-		// __libify_unset.
-		fmt.Fprintf(&out, ".weak _%s\n", export)
+		fmt.Fprintf(&out, "%s _%s\n", directive, export)
 	}
 
 	out.WriteString("\n_fn_exports_table:\n")
@@ -59,6 +60,7 @@ type StubOptions struct {
 	Dependencies []string
 	Imports      []string
 	Exports      []string
+	Retain       bool
 }
 
 func Bootstrap(prefix string) []string {
@@ -139,6 +141,7 @@ func Stub(opt StubOptions) ([]byte, error) {
 		"Prefix":  opt.Prefix,
 		"Init":    opt.Init,
 		"Magic":   magic(opt.Name),
+		"Retain":  opt.Retain,
 	})
 	if err != nil {
 		return nil, err

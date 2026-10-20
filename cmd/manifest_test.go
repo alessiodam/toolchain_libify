@@ -18,12 +18,12 @@ func manifestFlags() (*pflag.FlagSet, *string, *[]string) {
 
 func TestManifestFillsUnsetFlags(t *testing.T) {
 	path := write(t, manifestFile, strings.Join([]string{
-		`name = "LWIP"`,
+		`name = "EXAMPLE"`,
 		`depend = ["usbdrvce", "fileioc"]`,
 		`optimize = "-O2"`,
 		`[app]`,
-		`name = "lwIP"`,
-		`init = "lwip_init_runtime_internal"`,
+		`name = "ExampleApp"`,
+		`init = "example_init_runtime"`,
 		`imports = ["usb_Init"]`,
 		`[app.make]`,
 		`LTO = "NO"`,
@@ -45,7 +45,7 @@ func TestManifestFillsUnsetFlags(t *testing.T) {
 	if strings.Join(*depend, ",") != "usbdrvce,fileioc" {
 		t.Fatalf("depend = %v", *depend)
 	}
-	if app == nil || app.Name != "lwIP" || app.Make["LTO"] != "NO" || app.Imports[0] != "usb_Init" {
+	if app == nil || app.Name != "ExampleApp" || app.Make["LTO"] != "NO" || app.Imports[0] != "usb_Init" {
 		t.Fatalf("app = %+v", app)
 	}
 	if len(steps) != 1 || steps[0].Run[1] != "headers.py" {
