@@ -154,7 +154,7 @@ Keys of `[app]`:
 | `linker_script` | generated | linker script to use instead of the generated one, which must place `.fn_exports` at offset `0x40` (and `.libify_version` at `0x1000` when `version` is set) |
 | `split` | 65200 | appvar size the application is split into |
 | `installer` | app_tools on GitHub | git URL of app_tools |
-| `installer_ref` | a pinned commit | commit to build the installer from |
+| `apptools_ref` | repository default branch | optional app_tools commit, tag or branch to build the installer from; when omitted, each build fetches the latest default branch |
 | `installer_patches` | none | patches applied to app_tools once, after cloning |
 
 `[app.make]` passes variables to `makefile.mk` verbatim, which is where

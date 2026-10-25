@@ -25,6 +25,7 @@ func TestManifestFillsUnsetFlags(t *testing.T) {
 		`name = "ExampleApp"`,
 		`version = "1.2.3"`,
 		`init = "example_init_runtime"`,
+		`apptools_ref = "deadbeef"`,
 		`imports = ["usb_Init"]`,
 		`[app.make]`,
 		`LTO = "NO"`,
@@ -46,11 +47,45 @@ func TestManifestFillsUnsetFlags(t *testing.T) {
 	if strings.Join(*depend, ",") != "usbdrvce,fileioc" {
 		t.Fatalf("depend = %v", *depend)
 	}
-	if app == nil || app.Name != "ExampleApp" || app.Version != "1.2.3" || app.Make["LTO"] != "NO" || app.Imports[0] != "usb_Init" {
+	if app == nil || app.Name != "ExampleApp" || app.Version != "1.2.3" || app.AppToolsRef != "deadbeef" || app.Make["LTO"] != "NO" || app.Imports[0] != "usb_Init" {
 		t.Fatalf("app = %+v", app)
 	}
 	if len(steps) != 1 || steps[0].Run[1] != "headers.py" {
 		t.Fatalf("steps = %+v", steps)
+	}
+}
+
+func TestManifestAcceptsDeprecatedInstallerRef(t *testing.T) {
+	path := write(t, manifestFile, strings.Join([]string{
+		`name = "EXAMPLE"`,
+		`[app]`,
+		`name = "ExampleApp"`,
+		`init = "example_init_runtime"`,
+		`installer_ref = "deadbeef"`,
+	}, "\n"))
+
+	flags, _, _ := manifestFlags()
+	if err := applyManifest(flags, path); err != nil {
+		t.Fatalf("applyManifest: %v", err)
+	}
+	if app == nil || app.AppToolsRef != "deadbeef" {
+		t.Fatalf("app = %+v", app)
+	}
+}
+
+func TestManifestRejectsBothAppToolsRefs(t *testing.T) {
+	path := write(t, manifestFile, strings.Join([]string{
+		`name = "EXAMPLE"`,
+		`[app]`,
+		`name = "ExampleApp"`,
+		`init = "example_init_runtime"`,
+		`apptools_ref = "main"`,
+		`installer_ref = "deadbeef"`,
+	}, "\n"))
+
+	flags, _, _ := manifestFlags()
+	if err := applyManifest(flags, path); err == nil || !strings.Contains(err.Error(), "cannot set both") {
+		t.Fatalf("got %v", err)
 	}
 }
 

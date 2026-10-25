@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -13,11 +17,104 @@ import (
 )
 
 const (
-	defaultSplit        = 65200
-	defaultInstaller    = "https://github.com/CE-Programming/app_tools.git"
-	defaultInstallerRef = "3409a9d859c80f258e97e0efd46a0527b8469d96"
-	installerProgram    = "INSTALL.8xp"
+	defaultSplit     = 65200
+	defaultInstaller = "https://github.com/CE-Programming/app_tools.git"
+	installerProgram = "INSTALL.8xp"
 )
+
+type installerCache struct {
+	URL         string `json:"url"`
+	Commit      string `json:"commit"`
+	PatchDigest string `json:"patch_digest"`
+}
+
+func installerCommitFromRefs(output, ref string) (string, error) {
+	refs := make(map[string]string)
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 {
+			refs[fields[1]] = fields[0]
+		}
+	}
+
+	if ref == "" {
+		if commit := refs["HEAD"]; commit != "" {
+			return commit, nil
+		}
+		return "", fmt.Errorf("remote did not advertise HEAD")
+	}
+
+	candidates := []string{ref}
+	if !strings.HasPrefix(ref, "refs/") {
+		candidates = append(candidates,
+			"refs/heads/"+ref,
+			"refs/tags/"+ref+"^{}",
+			"refs/tags/"+ref)
+	} else if strings.HasPrefix(ref, "refs/tags/") {
+		candidates = append([]string{ref + "^{}"}, candidates...)
+	}
+	for _, candidate := range candidates {
+		if commit := refs[candidate]; commit != "" {
+			return commit, nil
+		}
+	}
+	return "", fmt.Errorf("ref %q was not advertised by remote", ref)
+}
+
+func resolveInstallerCommit(url, ref string) (string, error) {
+	if (len(ref) == 40 || len(ref) == 64) && isHex(ref) {
+		return strings.ToLower(ref), nil
+	}
+	args := []string{"ls-remote", url}
+	if ref == "" {
+		args = append(args, "HEAD")
+	} else {
+		args = append(args, ref)
+		if !strings.HasPrefix(ref, "refs/") {
+			args = append(args, "refs/heads/"+ref, "refs/tags/"+ref, "refs/tags/"+ref+"^{}")
+		} else if strings.HasPrefix(ref, "refs/tags/") {
+			args = append(args, ref+"^{}")
+		}
+	}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("git ls-remote: %w", err)
+	}
+	return installerCommitFromRefs(string(out), ref)
+}
+
+func isHex(value string) bool {
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func installerPatchDigest(patches []string) (string, error) {
+	hash := sha256.New()
+	for _, patch := range patches {
+		body, err := os.ReadFile(patch)
+		if err != nil {
+			return "", err
+		}
+		hash.Write([]byte(filepath.ToSlash(patch)))
+		hash.Write([]byte{0})
+		hash.Write(body)
+		hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func installerCachePath(dir string) string {
+	return filepath.Join(dir, ".git", "libify-cache.json")
+}
+
+func installerCacheMatches(dir string, want installerCache) bool {
+	body, err := os.ReadFile(installerCachePath(dir))
+	if err != nil {
+		return false
+	}
+	var got installerCache
+	return json.Unmarshal(body, &got) == nil && got == want
+}
 
 func writeIfChanged(path string, body []byte) error {
 	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, body) {
@@ -87,25 +184,35 @@ func (p *pipeline) appMakefile(table, script string) ([]byte, error) {
 
 func (p *pipeline) installer(split int) error {
 	dir := filepath.Join(p.objDir, "libify", "app_tools")
+	url, ref := app.Installer, app.AppToolsRef
+	if url == "" {
+		url = defaultInstaller
+	}
 
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		url, ref := app.Installer, app.InstallerRef
-		if url == "" {
-			url = defaultInstaller
-		}
-		if ref == "" {
-			ref = defaultInstallerRef
-		}
+	if ref == "" {
+		fmt.Fprintln(os.Stderr, "[installer]", url, "(default branch)")
+	} else {
+		fmt.Fprintln(os.Stderr, "[installer]", url, ref)
+	}
+	commit, err := resolveInstallerCommit(url, ref)
+	if err != nil {
+		return err
+	}
+	patchDigest, err := installerPatchDigest(app.Patches)
+	if err != nil {
+		return err
+	}
+	want := installerCache{URL: url, Commit: commit, PatchDigest: patchDigest}
 
+	if !installerCacheMatches(dir, want) {
 		staging := dir + ".tmp"
 		if err := os.RemoveAll(staging); err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "[installer]", url, ref)
-		if err := p.env.Run("git", "clone", "--quiet", url, staging); err != nil {
+		if err := p.env.Run("git", "clone", "--quiet", "--no-checkout", url, staging); err != nil {
 			return err
 		}
-		if err := p.env.Run("git", "-C", staging, "checkout", "--quiet", ref); err != nil {
+		if err := p.env.Run("git", "-C", staging, "checkout", "--quiet", "--detach", commit); err != nil {
 			return err
 		}
 		for _, patch := range app.Patches {
@@ -118,13 +225,23 @@ func (p *pipeline) installer(split int) error {
 				return err
 			}
 		}
+		cacheBody, err := json.Marshal(want)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(installerCachePath(staging), cacheBody, 0o644); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			return err
+		}
 		if err := os.Rename(staging, dir); err != nil {
 			return err
 		}
 	}
 
 	installer := filepath.Join(dir, "installer")
-	err := p.env.Run("make", "-B", "-C", installer,
+	err = p.env.Run("make", "-B", "-C", installer,
 		"APPVAR_PREFIX="+p.name,
 		"APPVAR_SPLIT_SIZE="+strconv.Itoa(split),
 		"CEDEV_TOOLCHAIN="+filepath.ToSlash(p.env.Prefix))
