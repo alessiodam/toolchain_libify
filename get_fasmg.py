@@ -15,15 +15,44 @@ import zipfile
 FASMG_SITE = "https://flatassembler.net"
 FASMG_PAGE = FASMG_SITE + "/download.php"
 
-MACRO_SOURCES = {
+# Which CE-Programming/toolchain revision the includes come from. A caller
+# that pins the toolchain must be able to pin these with it: fetching from a
+# moving branch defeats the pin, and an upstream rename then breaks builds
+# that changed nothing. That is not hypothetical -- include_library.inc was
+# renamed to library.inc on master, which 404'd every build still asking for
+# the old name, including ones pinned to a toolchain tag that still had it.
+#
+# Override with --toolchain-ref or CE_TOOLCHAIN_REF; the default tracks master
+# so existing callers behave as before.
+DEFAULT_TOOLCHAIN_REF = "master"
+TOOLCHAIN_RAW = "https://raw.githubusercontent.com/CE-Programming/toolchain"
+
+# Files taken from the toolchain, all resolved against one ref.
+TOOLCHAIN_INCLUDES = (
+    "library.inc",
+    "include_library.inc",
+    "ti84pceg.inc",
+)
+
+# Everything else, pinned per-source since it comes from other repositories.
+OTHER_SOURCES = {
     "ez80.alm": "https://raw.githubusercontent.com/jacobly0/fasmg-ez80/main/ez80.alm",
     "commands.alm": "https://raw.githubusercontent.com/jacobly0/fasmg-ez80/main/commands.alm",
     "ez80.inc": "https://raw.githubusercontent.com/jacobly0/fasmg-ez80/main/ez80.inc",
-    "library.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/master/src/include/library.inc",
-    "include_library.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/master/src/include/include_library.inc",
-    "ti84pceg.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/master/src/include/ti84pceg.inc",
     "tiformat.inc": "https://raw.githubusercontent.com/cagscalclabs/cryptx/dev/include/tiformat.inc",
 }
+
+
+def macro_sources(toolchain_ref=DEFAULT_TOOLCHAIN_REF):
+    """Every macro file to fetch, with the toolchain ones at `toolchain_ref`."""
+    sources = dict(OTHER_SOURCES)
+    for name in TOOLCHAIN_INCLUDES:
+        sources[name] = f"{TOOLCHAIN_RAW}/{toolchain_ref}/src/include/{name}"
+    return sources
+
+
+# Kept so existing importers of MACRO_SOURCES still work.
+MACRO_SOURCES = macro_sources()
 
 ARCHIVE_MEMBERS = {
     "Windows": ("fasmg.exe", "fasmg.exe"),
@@ -76,8 +105,8 @@ def install_fasmg(destination):
     return target
 
 
-def install_macros(destination):
-    for name, url in MACRO_SOURCES.items():
+def install_macros(destination, toolchain_ref=DEFAULT_TOOLCHAIN_REF):
+    for name, url in macro_sources(toolchain_ref).items():
         target = os.path.join(destination, name)
         print("[get-fasmg] " + name)
         with open(target, "wb") as out:
@@ -92,6 +121,13 @@ def main():
     parser.add_argument("--bin", default=os.path.join(root, "build"))
     parser.add_argument("--vendor", default=os.path.join(root, "build", "vendor"))
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--toolchain-ref",
+        default=os.environ.get("CE_TOOLCHAIN_REF", DEFAULT_TOOLCHAIN_REF),
+        help="CE-Programming/toolchain branch or tag to take the includes "
+             "from (default: $CE_TOOLCHAIN_REF, else "
+             f"{DEFAULT_TOOLCHAIN_REF}). Set this to the same revision the "
+             "rest of your build pins.")
     args = parser.parse_args()
 
     os.makedirs(args.bin, exist_ok=True)
@@ -103,9 +139,12 @@ def main():
     else:
         print("[get-fasmg] fasmg already present")
 
-    missing = [n for n in MACRO_SOURCES if not os.path.exists(os.path.join(args.vendor, n))]
+    sources = macro_sources(args.toolchain_ref)
+    missing = [n for n in sources if not os.path.exists(os.path.join(args.vendor, n))]
     if args.force or missing:
-        install_macros(args.vendor)
+        if args.toolchain_ref != DEFAULT_TOOLCHAIN_REF:
+            print(f"[get-fasmg] toolchain includes from {args.toolchain_ref}")
+        install_macros(args.vendor, args.toolchain_ref)
     else:
         print("[get-fasmg] macro packages already present")
 
