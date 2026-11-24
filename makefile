@@ -39,8 +39,12 @@ vet:
 fmt:
 	$(Q)gofmt -l -w .
 
+# CE_TOOLCHAIN_REF pins the CE-Programming/toolchain revision the includes are
+# fetched from. Set it to whatever revision the rest of your build pins; left
+# unset, get_fasmg.py uses v15.0, the last fasmg toolchain.
 deps:
-	$(Q)$(PYTHON) get_fasmg.py --bin $(BUILD) --vendor $(VENDOR)
+	$(Q)$(PYTHON) get_fasmg.py --bin $(BUILD) --vendor $(VENDOR) \
+		$(if $(CE_TOOLCHAIN_REF),--toolchain-ref $(CE_TOOLCHAIN_REF))
 
 $(FASMG):
 	$(Q)$(MAKE) deps

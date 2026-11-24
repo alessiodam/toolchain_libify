@@ -23,7 +23,8 @@ type appBuild struct {
 	LinkerScript string            `toml:"linker_script"`
 	Split        int               `toml:"split"`
 	Installer    string            `toml:"installer"`
-	InstallerRef string            `toml:"installer_ref"`
+	AppToolsRef  string            `toml:"apptools_ref"`
+	InstallerRef string            `toml:"installer_ref"` // Deprecated compatibility alias.
 	Patches      []string          `toml:"installer_patches"`
 	Make         map[string]string `toml:"make"`
 	Retain       bool              `toml:"retain_removed"`
@@ -75,6 +76,12 @@ func applyManifest(flags *pflag.FlagSet, path string) error {
 	}
 	if parsed.App != nil && (parsed.App.Name == "" || parsed.App.Init == "") {
 		return fmt.Errorf("%s: [app] needs name and init", path)
+	}
+	if parsed.App != nil && parsed.App.AppToolsRef != "" && parsed.App.InstallerRef != "" {
+		return fmt.Errorf("%s: [app] cannot set both apptools_ref and deprecated installer_ref", path)
+	}
+	if parsed.App != nil && parsed.App.AppToolsRef == "" {
+		parsed.App.AppToolsRef = parsed.App.InstallerRef
 	}
 	for _, s := range parsed.Step {
 		if len(s.Run) == 0 {
