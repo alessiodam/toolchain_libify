@@ -19,9 +19,9 @@ MACRO_SOURCES = {
     "ez80.alm": "https://raw.githubusercontent.com/jacobly0/fasmg-ez80/main/ez80.alm",
     "commands.alm": "https://raw.githubusercontent.com/jacobly0/fasmg-ez80/main/commands.alm",
     "ez80.inc": "https://raw.githubusercontent.com/jacobly0/fasmg-ez80/main/ez80.inc",
-    "library.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/master/src/include/library.inc",
-    "include_library.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/master/src/include/include_library.inc",
-    "ti84pceg.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/master/src/include/ti84pceg.inc",
+    "library.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/v15.0/src/include/library.inc",
+    "include_library.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/v15.0/src/include/include_library.inc",
+    "ti84pceg.inc": "https://raw.githubusercontent.com/CE-Programming/toolchain/v15.0/src/include/ti84pceg.inc",
     "tiformat.inc": "https://raw.githubusercontent.com/cagscalclabs/cryptx/dev/include/tiformat.inc",
 }
 
